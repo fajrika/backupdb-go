@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git
 
@@ -24,14 +24,12 @@ WORKDIR /app
 
 COPY --from=builder /app/db-backup-scheduler .
 
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app && mkdir -p /data && chown appuser:appuser /data
 
 USER appuser
 
 ENV PORT=3400
 ENV DATA_DIR=/data
-
-RUN mkdir -p /data && chown appuser:appuser /data
 
 EXPOSE 3400
 
