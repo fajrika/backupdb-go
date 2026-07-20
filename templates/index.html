@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DB Backup Scheduler</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #eef1f5; color: #2c3440; }
+  .header {
+    background: linear-gradient(135deg, #243b55, #141e30); color: #fff;
+    padding: 18px 28px; display: flex; align-items: center; gap: 12px;
+  }
+  .header h1 { font-size: 19px; font-weight: 600; }
+  .header .sub { font-size: 12px; opacity: .8; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 2px solid #dde3ea; }
+  .tab {
+    padding: 10px 18px; cursor: pointer; font-size: 14px; font-weight: 500;
+    color: #6b7684; border-bottom: 2px solid transparent; margin-bottom: -2px;
+  }
+  .tab.active { color: #243b55; border-bottom-color: #243b55; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
+  .card-head {
+    padding: 14px 18px; border-bottom: 1px solid #eef1f5; display: flex;
+    justify-content: space-between; align-items: center;
+  }
+  .card-head h2 { font-size: 15px; font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #f7f9fb; padding: 10px 14px; text-align: left; font-weight: 600; color: #556; white-space: nowrap; }
+  tbody td { padding: 10px 14px; border-top: 1px solid #f0f3f6; vertical-align: middle; }
+  tbody tr:hover { background: #f9fbfd; }
+  .empty { padding: 40px; text-align: center; color: #9aa5b1; font-size: 13px; }
+
+  .btn {
+    padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: #2e6fd6; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #245bb0; }
+  .btn-ghost { background: #eef1f5; color: #445; }
+  .btn-ghost:hover { background: #e2e7ee; }
+  .btn-danger { background: #e05656; color: #fff; }
+  .btn-ok { background: #2fa36b; color: #fff; }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
+
+  .badge { padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .b-success { background: #e2f5ec; color: #1f7a4d; }
+  .b-failed { background: #fdeaea; color: #c0392b; }
+  .b-running { background: #fef4e2; color: #b9770e; }
+  .b-off { background: #eceff2; color: #8a95a1; }
+  .b-on { background: #e4eefb; color: #2e6fd6; }
+
+  /* modal */
+  .overlay { position: fixed; inset: 0; background: rgba(20,30,48,.55); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 10px; width: min(520px, 92vw); max-height: 90vh; overflow-y: auto; padding: 22px 24px; }
+  .modal h3 { font-size: 16px; margin-bottom: 16px; }
+  .field { margin-bottom: 13px; }
+  .field label { display: block; font-size: 12px; color: #667; margin-bottom: 5px; font-weight: 500; }
+  .field input, .field select {
+    width: 100%; padding: 9px 11px; border: 1px solid #d3dae2; border-radius: 6px; font-size: 13px; background: #fff;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: #2e6fd6; }
+  .field .hint { font-size: 11px; color: #9aa5b1; margin-top: 4px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .modal-msg { font-size: 12px; padding: 8px 11px; border-radius: 6px; margin-bottom: 12px; display: none; }
+  .modal-msg.err { display: block; background: #fdeaea; color: #c0392b; }
+  .modal-msg.ok { display: block; background: #e2f5ec; color: #1f7a4d; }
+
+  .toast {
+    position: fixed; top: 18px; right: 18px; padding: 13px 18px; border-radius: 8px; color: #fff;
+    font-size: 13px; z-index: 200; box-shadow: 0 4px 14px rgba(0,0,0,.2);
+    transform: translateX(130%); transition: transform .3s;
+  }
+  .toast.show { transform: translateX(0); }
+  .toast.info { background: #2e6fd6; } .toast.ok { background: #2fa36b; } .toast.err { background: #e05656; }
+  .muted { color: #9aa5b1; font-size: 12px; }
+  code { background: #f0f3f6; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* split panel */
+  .split { display: flex; gap: 0; min-height: 420px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .split-left { width: 260px; min-width: 260px; background: #fff; border-right: 1px solid #eef1f5; overflow-y: auto; }
+  .split-right { flex: 1; background: #fff; overflow-y: auto; }
+  .split-left-head { padding: 14px 16px; border-bottom: 1px solid #eef1f5; font-size: 14px; font-weight: 600; color: #243b55; }
+  .conn-item {
+    padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f5f7fa;
+    display: flex; align-items: center; gap: 10px; transition: background .15s;
+  }
+  .conn-item:hover { background: #f5f8fc; }
+  .conn-item.active { background: #e8eef8; border-left: 3px solid #2e6fd6; }
+  .conn-item .icon { font-size: 18px; opacity: .7; }
+  .conn-item .info { flex: 1; min-width: 0; }
+  .conn-item .name { font-size: 13px; font-weight: 600; color: #2c3440; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conn-item .host { font-size: 11px; color: #9aa5b1; }
+  .conn-item .count { background: #e8eef8; color: #2e6fd6; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .split-right-head { padding: 14px 18px; border-bottom: 1px solid #eef1f5; display: flex; justify-content: space-between; align-items: center; }
+  .split-right-head h2 { font-size: 14px; font-weight: 600; }
+  .file-item {
+    padding: 12px 18px; border-bottom: 1px solid #f5f7fa; display: flex;
+    align-items: center; gap: 14px; transition: background .15s;
+  }
+  .file-item:hover { background: #fafbfd; }
+  .file-icon { font-size: 20px; opacity: .6; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: 13px; font-weight: 500; color: #2c3440; word-break: break-all; }
+  .file-meta { font-size: 11px; color: #9aa5b1; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .empty-split { padding: 60px 20px; text-align: center; color: #9aa5b1; font-size: 13px; }
+
+  /* restore confirm modal */
+  .confirm-box { background: #fef4e2; border: 1px solid #f0d48a; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  .confirm-box .label { font-size: 11px; color: #8a5a00; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+  .confirm-box .value { font-size: 13px; color: #5a4000; }
+  .typing-input { width: 100%; padding: 9px 11px; border: 2px solid #d3dae2; border-radius: 6px; font-size: 13px; font-family: monospace; }
+  .typing-input:focus { outline: none; border-color: #e05656; }
+  .typing-input.error { border-color: #e05656; background: #fef8f8; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span style="font-size:22px">🗄️</span>
+  <div>
+    <h1>DB Backup Scheduler</h1>
+    <div class="sub">Backup database terjadwal — MySQL → penyimpanan lokal</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="tabs">
+    <div class="tab active" data-tab="koneksi">Koneksi</div>
+    <div class="tab" data-tab="destinasi">Destinasi</div>
+    <div class="tab" data-tab="jadwal">Jadwal</div>
+    <div class="tab" data-tab="restore">Restore</div>
+    <div class="tab" data-tab="filebackup">File Backup</div>
+    <div class="tab" data-tab="riwayat">Riwayat</div>
+  </div>
+
+  <!-- KONEKSI -->
+  <div class="panel active" id="panel-koneksi">
+    <div class="card">
+      <div class="card-head">
+        <h2>Master Koneksi Database</h2>
+        <button class="btn btn-primary btn-sm" onclick="bukaKoneksi()">+ Tambah Koneksi</button>
+      </div>
+      <table>
+        <thead><tr><th>Nama</th><th>Driver</th><th>Host</th><th>Database</th><th style="text-align:right">Aksi</th></tr></thead>
+        <tbody id="tbodyKoneksi"><tr><td colspan="5" class="empty">Memuat…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- DESTINASI -->
+  <div class="panel" id="panel-destinasi">
+    <div class="card">
+      <div class="card-head">
+        <h2>Master Destinasi</h2>
+        <button class="btn btn-primary btn-sm" onclick="bukaDestinasi()">+ Tambah Destinasi</button>
+      </div>
+      <table>
+        <thead><tr><th>Nama</th><th>Tipe</th><th>Lokasi</th><th>Retensi</th><th style="text-align:right">Aksi</th></tr></thead>
+        <tbody id="tbodyDestinasi"><tr><td colspan="5" class="empty">Memuat…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- JADWAL -->
+  <div class="panel" id="panel-jadwal">
+    <div class="card">
+      <div class="card-head">
+        <h2>Jadwal Backup</h2>
+        <button class="btn btn-primary btn-sm" onclick="bukaJadwal()">+ Tambah Jadwal</button>
+      </div>
+      <table>
+        <thead><tr><th>Nama</th><th>Koneksi → Destinasi</th><th>Jadwal</th><th>Status</th><th>Terakhir</th><th style="text-align:right">Aksi</th></tr></thead>
+        <tbody id="tbodyJadwal"><tr><td colspan="6" class="empty">Memuat…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RESTORE -->
+  <div class="panel" id="panel-restore">
+    <div class="card">
+      <div class="card-head"><h2>Restore Database</h2>
+        <button class="btn btn-ghost btn-sm" onclick="muatRestore()">↻ Segarkan daftar</button>
+      </div>
+      <div style="padding:18px 20px">
+        <div class="modal-msg err" style="display:block; background:#fff6e5; color:#8a5a00; margin-bottom:16px">
+          ⚠ Restore <b>menimpa</b> data di server tujuan. Nama database mengikuti isi file backup.
+          Bisa dikembalikan ke koneksi asal, atau ke koneksi lain (mis. server staging).
+        </div>
+        <div class="field" style="max-width:520px">
+          <label>File Backup</label>
+          <select id="rFile"><option value="">— memuat daftar —</option></select>
+          <div class="hint">Diambil dari folder destinasi lokal yang terdaftar.</div>
+        </div>
+        <div class="field" style="max-width:520px">
+          <label>Restore Ke Koneksi</label>
+          <select id="rConn"></select>
+          <div class="hint">Pilih koneksi asal untuk mengembalikan, atau koneksi lain untuk menyalin.</div>
+        </div>
+        <button class="btn btn-danger" id="btnRestore" onclick="jalankanRestore()">⟲ Jalankan Restore</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIWAYAT -->
+  <div class="panel" id="panel-riwayat">
+    <div class="card">
+      <div class="card-head">
+        <h2>Riwayat Backup</h2>
+        <button class="btn btn-ghost btn-sm" onclick="muatRiwayat()">↻ Segarkan</button>
+      </div>
+      <table>
+        <thead><tr><th>Waktu</th><th>Jenis</th><th>Koneksi</th><th>Sumber/Tujuan</th><th>Status</th><th>Ukuran</th><th>Keterangan</th></tr></thead>
+        <tbody id="tbodyRiwayat"><tr><td colspan="7" class="empty">Memuat…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- FILE BACKUP -->
+  <div class="panel" id="panel-filebackup">
+    <div class="split">
+      <div class="split-left">
+        <div class="split-left-head">Koneksi</div>
+        <div id="fbConnList"><div class="empty-split">Memuat…</div></div>
+      </div>
+      <div class="split-right">
+        <div class="split-right-head">
+          <h2 id="fbTitle">Pilih koneksi di sebelah kiri</h2>
+          <button class="btn btn-ghost btn-sm" onclick="muatFileBackup()">↻ Segarkan</button>
+        </div>
+        <div id="fbFileList"><div class="empty-split">Pilih koneksi untuk melihat file backup</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Koneksi -->
+<div class="overlay" id="ovKoneksi">
+  <div class="modal">
+    <h3 id="judulKoneksi">Tambah Koneksi</h3>
+    <div class="modal-msg" id="msgKoneksi"></div>
+    <input type="hidden" id="kId">
+    <div class="field"><label>Nama Koneksi</label><input id="kName" placeholder="mis. DB Produksi Santorini"></div>
+    <div class="field"><label>Driver</label><select id="kDriver"><option value="mysql">MySQL</option></select></div>
+    <div class="row2">
+      <div class="field"><label>Host</label><input id="kHost" placeholder="127.0.0.1"></div>
+      <div class="field"><label>Port</label><input id="kPort" placeholder="3306"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>User</label><input id="kUser" placeholder="root"></div>
+      <div class="field"><label>Password</label><input id="kPass" type="password" placeholder="•••"></div>
+    </div>
+    <div class="field">
+      <label>Database</label><input id="kDb" placeholder="kosongkan = backup SEMUA database">
+      <div class="hint">Kosong berarti seluruh database (mysqldump --all-databases).</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="tutup('ovKoneksi')">Batal</button>
+      <button class="btn btn-ok" id="btnTesKoneksi" onclick="tesKoneksi()">Tes Koneksi</button>
+      <button class="btn btn-primary" onclick="simpanKoneksi()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Destinasi -->
+<div class="overlay" id="ovDestinasi">
+  <div class="modal">
+    <h3 id="judulDestinasi">Tambah Destinasi</h3>
+    <div class="modal-msg" id="msgDestinasi"></div>
+    <input type="hidden" id="dId">
+    <div class="field"><label>Nama Destinasi</label><input id="dName" placeholder="mis. Folder Backup Lokal"></div>
+    <div class="field">
+      <label>Tipe</label>
+      <select id="dType">
+        <option value="local">Lokal (folder di komputer ini)</option>
+        <option value="ftp" disabled>FTP — menyusul</option>
+        <option value="gdrive" disabled>Google Drive — menyusul</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Folder Tujuan</label><input id="dPath" placeholder="/Users/nama/Backups atau D:\\Backups">
+      <div class="hint">Folder dibuat otomatis bila belum ada.</div>
+    </div>
+    <div class="field">
+      <label>Retensi (simpan berapa backup terakhir)</label><input id="dRet" type="number" min="0" placeholder="0 = simpan semua">
+      <div class="hint">Backup lama melebihi angka ini akan dihapus otomatis. 0 = tidak dihapus.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="tutup('ovDestinasi')">Batal</button>
+      <button class="btn btn-primary" onclick="simpanDestinasi()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Jadwal -->
+<div class="overlay" id="ovJadwal">
+  <div class="modal">
+    <h3 id="judulJadwal">Tambah Jadwal</h3>
+    <div class="modal-msg" id="msgJadwal"></div>
+    <input type="hidden" id="jId">
+    <div class="field"><label>Nama Jadwal</label><input id="jName" placeholder="mis. Backup Harian Malam"></div>
+    <div class="field"><label>Koneksi</label><select id="jConn"></select></div>
+    <div class="field"><label>Destinasi</label><select id="jDest"></select></div>
+    <div class="field">
+      <label>Frekuensi</label>
+      <select id="jFreq" onchange="ubahFrekuensi()">
+        <option value="daily">Harian</option>
+        <option value="hourly">Tiap N jam</option>
+        <option value="weekly">Mingguan</option>
+        <option value="custom">Custom (cron)</option>
+      </select>
+    </div>
+    <div class="row2" id="wrapWaktu">
+      <div class="field"><label>Jam</label><input id="jJam" type="number" min="0" max="23" value="2"></div>
+      <div class="field"><label>Menit</label><input id="jMenit" type="number" min="0" max="59" value="0"></div>
+    </div>
+    <div class="field" id="wrapTiap" style="display:none"><label>Setiap berapa jam</label><input id="jTiap" type="number" min="1" max="23" value="6"></div>
+    <div class="field" id="wrapHari" style="display:none"><label>Hari</label>
+      <select id="jHari"><option value="1">Senin</option><option value="2">Selasa</option><option value="3">Rabu</option><option value="4">Kamis</option><option value="5">Jumat</option><option value="6">Sabtu</option><option value="0">Minggu</option></select>
+    </div>
+    <div class="field" id="wrapCron" style="display:none">
+      <label>Ekspresi Cron (5 kolom)</label><input id="jCron" placeholder="0 2 * * *">
+      <div class="hint">menit jam tgl bulan hari. Contoh <code>0 2 * * *</code> = tiap hari 02:00.</div>
+    </div>
+    <div class="field"><label><input type="checkbox" id="jAktif" checked style="width:auto;margin-right:6px">Aktif</label></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="tutup('ovJadwal')">Batal</button>
+      <button class="btn btn-primary" onclick="simpanJadwal()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Restore Konfirmasi -->
+<div class="overlay" id="ovRestoreConfirm">
+  <div class="modal">
+    <h3>Konfirmasi Restore</h3>
+    <div class="modal-msg" id="msgRestoreConfirm"></div>
+
+    <div class="confirm-box">
+      <div class="label">File Backup</div>
+      <div class="value" id="rcFile">—</div>
+    </div>
+    <div class="confirm-box">
+      <div class="label">Ukuran</div>
+      <div class="value" id="rcSize">—</div>
+    </div>
+
+    <div class="field">
+      <label>Restore Ke Koneksi</label>
+      <select id="rcConn"></select>
+    </div>
+
+    <div style="background:#fdeaea; border:1px solid #f5c6c6; border-radius:8px; padding:14px 16px; margin-bottom:14px">
+      <div style="font-size:12px; color:#c0392b; font-weight:600; margin-bottom:6px">PERINGATAN: Tindakan ini MENIMPA data dan TIDAK BISA dibatalkan</div>
+      <div style="font-size:12px; color:#8b3a3a">Seluruh data di database tujuan akan diganti dengan isi file backup.</div>
+    </div>
+
+    <div class="field">
+      <label>Ketik <b style="color:#e05656">RESTORE</b> untuk melanjutkan</label>
+      <input type="text" class="typing-input" id="rcType" placeholder="Ketik RESTORE di sini" autocomplete="off">
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="tutup('ovRestoreConfirm')">Batal</button>
+      <button class="btn btn-danger" id="btnRcExec" onclick="eksekusiRestore()" disabled>⟲ Jalankan Restore</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let koneksiCache = [], destinasiCache = [];
+
+function toast(msg, tipe='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + tipe + ' show';
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 4000);
+}
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const j = await r.json().catch(() => ({success:false, message:'respon tidak valid'}));
+  return j;
+}
+function tutup(id) { document.getElementById(id).classList.remove('show'); }
+function modalMsg(id, txt, tipe) {
+  const el = document.getElementById(id);
+  if (!txt) { el.className = 'modal-msg'; el.textContent=''; return; }
+  el.className = 'modal-msg ' + tipe; el.textContent = txt;
+}
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ---- tabs ----
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+  if (t.dataset.tab === 'riwayat') muatRiwayat();
+  if (t.dataset.tab === 'jadwal') muatJadwal();
+  if (t.dataset.tab === 'restore') muatRestore();
+  if (t.dataset.tab === 'filebackup') muatFileBackup();
+});
+
+// ================= KONEKSI =================
+async function muatKoneksi() {
+  const j = await api('/api/connections');
+  koneksiCache = j.data || [];
+  const tb = document.getElementById('tbodyKoneksi');
+  if (!koneksiCache.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">Belum ada koneksi. Klik "Tambah Koneksi".</td></tr>'; return; }
+  tb.innerHTML = koneksiCache.map(c => `
+    <tr>
+      <td><b>${esc(c.name)}</b></td>
+      <td>${esc(c.driver)}</td>
+      <td>${esc(c.host)}:${esc(c.port)}</td>
+      <td>${c.database ? esc(c.database) : '<span class="muted">semua</span>'}</td>
+      <td style="text-align:right">
+        <button class="btn btn-ghost btn-sm" onclick='editKoneksi("${c.id}")'>Edit</button>
+        <button class="btn btn-danger btn-sm" onclick='hapusKoneksi("${c.id}","${esc(c.name)}")'>Hapus</button>
+      </td>
+    </tr>`).join('');
+}
+function bukaKoneksi() {
+  document.getElementById('judulKoneksi').textContent = 'Tambah Koneksi';
+  ['kId','kName','kHost','kPort','kUser','kPass','kDb'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('kPort').value = '3306';
+  document.getElementById('kHost').value = '127.0.0.1';
+  modalMsg('msgKoneksi','');
+  document.getElementById('ovKoneksi').classList.add('show');
+}
+function editKoneksi(id) {
+  const c = koneksiCache.find(x => x.id === id); if (!c) return;
+  document.getElementById('judulKoneksi').textContent = 'Edit Koneksi';
+  document.getElementById('kId').value = c.id;
+  document.getElementById('kName').value = c.name;
+  document.getElementById('kHost').value = c.host;
+  document.getElementById('kPort').value = c.port;
+  document.getElementById('kUser').value = c.user;
+  document.getElementById('kPass').value = '';
+  document.getElementById('kPass').placeholder = c.password ? '(tidak diubah)' : '•••';
+  document.getElementById('kDb').value = c.database;
+  modalMsg('msgKoneksi','');
+  document.getElementById('ovKoneksi').classList.add('show');
+}
+function bacaKoneksi() {
+  return {
+    id: document.getElementById('kId').value,
+    name: document.getElementById('kName').value.trim(),
+    driver: document.getElementById('kDriver').value,
+    host: document.getElementById('kHost').value.trim(),
+    port: document.getElementById('kPort').value.trim(),
+    user: document.getElementById('kUser').value.trim(),
+    password: document.getElementById('kPass').value,
+    database: document.getElementById('kDb').value.trim(),
+  };
+}
+async function tesKoneksi() {
+  const btn = document.getElementById('btnTesKoneksi');
+  btn.disabled = true; btn.textContent = 'Menguji…';
+  const j = await api('/api/connections/test', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(bacaKoneksi())});
+  btn.disabled = false; btn.textContent = 'Tes Koneksi';
+  modalMsg('msgKoneksi', j.success ? '✓ Koneksi berhasil' : ('✗ ' + j.message), j.success ? 'ok' : 'err');
+}
+async function simpanKoneksi() {
+  const c = bacaKoneksi();
+  if (!c.name || !c.host) { modalMsg('msgKoneksi','Nama dan host wajib diisi','err'); return; }
+  const edit = !!c.id;
+  const j = await api(edit ? '/api/connections/'+c.id : '/api/connections',
+    {method: edit?'PUT':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c)});
+  if (!j.success) { modalMsg('msgKoneksi', j.message, 'err'); return; }
+  tutup('ovKoneksi'); toast('Koneksi tersimpan','ok'); muatKoneksi();
+}
+async function hapusKoneksi(id, nama) {
+  if (!confirm('Hapus koneksi "'+nama+'"?')) return;
+  const j = await api('/api/connections/'+id, {method:'DELETE'});
+  if (!j.success) { toast(j.message,'err'); return; }
+  toast('Koneksi dihapus','ok'); muatKoneksi();
+}
+
+// ================= DESTINASI =================
+async function muatDestinasi() {
+  const j = await api('/api/destinations');
+  destinasiCache = j.data || [];
+  const tb = document.getElementById('tbodyDestinasi');
+  if (!destinasiCache.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">Belum ada destinasi. Klik "Tambah Destinasi".</td></tr>'; return; }
+  tb.innerHTML = destinasiCache.map(d => `
+    <tr>
+      <td><b>${esc(d.name)}</b></td>
+      <td><span class="badge b-on">${esc(d.type)}</span></td>
+      <td>${esc(d.path)}</td>
+      <td>${d.retention>0 ? esc(d.retention)+' terakhir' : '<span class="muted">semua</span>'}</td>
+      <td style="text-align:right">
+        <button class="btn btn-ghost btn-sm" onclick='editDestinasi("${d.id}")'>Edit</button>
+        <button class="btn btn-danger btn-sm" onclick='hapusDestinasi("${d.id}","${esc(d.name)}")'>Hapus</button>
+      </td>
+    </tr>`).join('');
+}
+function bukaDestinasi() {
+  document.getElementById('judulDestinasi').textContent = 'Tambah Destinasi';
+  ['dId','dName','dPath','dRet'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('dType').value = 'local';
+  modalMsg('msgDestinasi','');
+  document.getElementById('ovDestinasi').classList.add('show');
+}
+function editDestinasi(id) {
+  const d = destinasiCache.find(x => x.id === id); if (!d) return;
+  document.getElementById('judulDestinasi').textContent = 'Edit Destinasi';
+  document.getElementById('dId').value = d.id;
+  document.getElementById('dName').value = d.name;
+  document.getElementById('dType').value = d.type;
+  document.getElementById('dPath').value = d.path;
+  document.getElementById('dRet').value = d.retention;
+  modalMsg('msgDestinasi','');
+  document.getElementById('ovDestinasi').classList.add('show');
+}
+async function simpanDestinasi() {
+  const d = {
+    id: document.getElementById('dId').value,
+    name: document.getElementById('dName').value.trim(),
+    type: document.getElementById('dType').value,
+    path: document.getElementById('dPath').value.trim(),
+    retention: parseInt(document.getElementById('dRet').value || '0', 10),
+  };
+  if (!d.name) { modalMsg('msgDestinasi','Nama wajib diisi','err'); return; }
+  if (d.type==='local' && !d.path) { modalMsg('msgDestinasi','Folder tujuan wajib diisi','err'); return; }
+  const edit = !!d.id;
+  const j = await api(edit ? '/api/destinations/'+d.id : '/api/destinations',
+    {method: edit?'PUT':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d)});
+  if (!j.success) { modalMsg('msgDestinasi', j.message, 'err'); return; }
+  tutup('ovDestinasi'); toast('Destinasi tersimpan','ok'); muatDestinasi();
+}
+async function hapusDestinasi(id, nama) {
+  if (!confirm('Hapus destinasi "'+nama+'"?')) return;
+  const j = await api('/api/destinations/'+id, {method:'DELETE'});
+  if (!j.success) { toast(j.message,'err'); return; }
+  toast('Destinasi dihapus','ok'); muatDestinasi();
+}
+
+// ================= JADWAL =================
+async function muatJadwal() {
+  await Promise.all([muatKoneksi(), muatDestinasi()]);
+  const j = await api('/api/schedules');
+  const list = j.data || [];
+  const tb = document.getElementById('tbodyJadwal');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Belum ada jadwal. Klik "Tambah Jadwal".</td></tr>'; return; }
+  const nm = (arr,id) => (arr.find(x=>x.id===id)||{}).name || '<span class="muted">?</span>';
+  tb.innerHTML = list.map(s => `
+    <tr>
+      <td><b>${esc(s.name)}</b></td>
+      <td>${esc(nm(koneksiCache,s.connection_id))} → ${esc(nm(destinasiCache,s.destination_id))}</td>
+      <td><code>${esc(s.cron)}</code></td>
+      <td>${s.enabled ? '<span class="badge b-on">aktif</span>' : '<span class="badge b-off">nonaktif</span>'}</td>
+      <td>${s.last_run && !s.last_run.startsWith('0001') ? statusBadge(s.last_status)+' '+esc(waktu(s.last_run)) : '<span class="muted">belum pernah</span>'}</td>
+      <td style="text-align:right; white-space:nowrap">
+        <button class="btn btn-ok btn-sm" onclick='backupSekarang("${s.connection_id}","${s.destination_id}")'>▶ Backup</button>
+        <button class="btn btn-ghost btn-sm" onclick='editJadwal("${s.id}")'>Edit</button>
+        <button class="btn btn-danger btn-sm" onclick='hapusJadwal("${s.id}","${esc(s.name)}")'>Hapus</button>
+      </td>
+    </tr>`).join('');
+}
+function isiDropdownJadwal() {
+  const c = document.getElementById('jConn'), d = document.getElementById('jDest');
+  c.innerHTML = koneksiCache.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('') || '<option value="">(belum ada koneksi)</option>';
+  d.innerHTML = destinasiCache.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('') || '<option value="">(belum ada destinasi)</option>';
+}
+function ubahFrekuensi() {
+  const f = document.getElementById('jFreq').value;
+  document.getElementById('wrapWaktu').style.display = (f==='daily'||f==='weekly') ? 'grid' : 'none';
+  document.getElementById('wrapTiap').style.display = f==='hourly' ? 'block' : 'none';
+  document.getElementById('wrapHari').style.display = f==='weekly' ? 'block' : 'none';
+  document.getElementById('wrapCron').style.display = f==='custom' ? 'block' : 'none';
+}
+function bukaJadwal() {
+  if (!koneksiCache.length || !destinasiCache.length) { toast('Buat minimal 1 koneksi dan 1 destinasi dulu','err'); return; }
+  document.getElementById('judulJadwal').textContent = 'Tambah Jadwal';
+  document.getElementById('jId').value=''; document.getElementById('jName').value='';
+  document.getElementById('jFreq').value='daily'; document.getElementById('jJam').value='2'; document.getElementById('jMenit').value='0';
+  document.getElementById('jAktif').checked = true;
+  isiDropdownJadwal(); ubahFrekuensi(); modalMsg('msgJadwal','');
+  document.getElementById('ovJadwal').classList.add('show');
+}
+function editJadwal(id) {
+  api('/api/schedules').then(j => {
+    const s = (j.data||[]).find(x=>x.id===id); if (!s) return;
+    isiDropdownJadwal();
+    document.getElementById('judulJadwal').textContent = 'Edit Jadwal';
+    document.getElementById('jId').value = s.id;
+    document.getElementById('jName').value = s.name;
+    document.getElementById('jConn').value = s.connection_id;
+    document.getElementById('jDest').value = s.destination_id;
+    document.getElementById('jAktif').checked = s.enabled;
+    // Tampilkan cron mentah lewat mode custom (paling jujur saat edit).
+    document.getElementById('jFreq').value = 'custom'; ubahFrekuensi();
+    document.getElementById('jCron').value = s.cron;
+    modalMsg('msgJadwal','');
+    document.getElementById('ovJadwal').classList.add('show');
+  });
+}
+function susunCron() {
+  const f = document.getElementById('jFreq').value;
+  const jam = parseInt(document.getElementById('jJam').value||'0',10);
+  const menit = parseInt(document.getElementById('jMenit').value||'0',10);
+  if (f==='daily') return `${menit} ${jam} * * *`;
+  if (f==='hourly') { const n = parseInt(document.getElementById('jTiap').value||'6',10); return `0 */${n} * * *`; }
+  if (f==='weekly') { const h = document.getElementById('jHari').value; return `${menit} ${jam} * * ${h}`; }
+  return document.getElementById('jCron').value.trim();
+}
+async function simpanJadwal() {
+  const s = {
+    id: document.getElementById('jId').value,
+    name: document.getElementById('jName').value.trim(),
+    connection_id: document.getElementById('jConn').value,
+    destination_id: document.getElementById('jDest').value,
+    cron: susunCron(),
+    enabled: document.getElementById('jAktif').checked,
+  };
+  if (!s.name) { modalMsg('msgJadwal','Nama wajib diisi','err'); return; }
+  if (!s.connection_id || !s.destination_id) { modalMsg('msgJadwal','Koneksi & destinasi wajib dipilih','err'); return; }
+  if (!s.cron) { modalMsg('msgJadwal','Jadwal cron kosong','err'); return; }
+  const edit = !!s.id;
+  const j = await api(edit ? '/api/schedules/'+s.id : '/api/schedules',
+    {method: edit?'PUT':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(s)});
+  if (!j.success) { modalMsg('msgJadwal', j.message, 'err'); return; }
+  tutup('ovJadwal'); toast('Jadwal tersimpan','ok'); muatJadwal();
+}
+async function hapusJadwal(id, nama) {
+  if (!confirm('Hapus jadwal "'+nama+'"?')) return;
+  const j = await api('/api/schedules/'+id, {method:'DELETE'});
+  if (!j.success) { toast(j.message,'err'); return; }
+  toast('Jadwal dihapus','ok'); muatJadwal();
+}
+async function backupSekarang(connId, destId) {
+  if (!confirm('Jalankan backup sekarang?')) return;
+  toast('Backup berjalan…','info');
+  const j = await api('/api/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({connection_id:connId, destination_id:destId})});
+  if (j.success) toast('Backup berhasil','ok');
+  else toast('Backup gagal: ' + (j.message||''), 'err');
+  muatJadwal();
+}
+
+// ================= RIWAYAT =================
+async function muatRiwayat() {
+  const j = await api('/api/history');
+  const list = j.data || [];
+  const tb = document.getElementById('tbodyRiwayat');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">Belum ada riwayat.</td></tr>'; return; }
+  tb.innerHTML = list.map(r => `
+    <tr>
+      <td>${esc(waktu(r.started_at))}</td>
+      <td>${r.kind==='restore' ? '<span class="badge b-running">restore</span>' : '<span class="badge b-on">backup</span>'}</td>
+      <td>${esc(r.conn_name)}</td>
+      <td>${esc(r.dest_name)}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td>${r.size_bytes ? ukuran(r.size_bytes) : '-'}</td>
+      <td class="muted" style="max-width:300px">${esc(r.message)}</td>
+    </tr>`).join('');
+}
+
+// ================= FILE BACKUP =================
+let allBackupFiles = [];
+let selectedConnId = null;
+
+async function muatFileBackup() {
+  await muatKoneksi();
+  const j = await api('/api/backups');
+  allBackupFiles = j.data || [];
+  renderFBConnList();
+  if (selectedConnId) renderFBFiles(selectedConnId);
+}
+
+function renderFBConnList() {
+  const el = document.getElementById('fbConnList');
+  // Group files by connection
+  const groups = {};
+  allBackupFiles.forEach(b => {
+    const cid = b.conn_id || '_unknown';
+    if (!groups[cid]) groups[cid] = { id: cid, name: b.conn_name || 'Tanpa Nama', count: 0 };
+    groups[cid].count++;
+  });
+
+  const items = Object.values(groups);
+  if (!items.length) {
+    el.innerHTML = '<div class="empty-split">Belum ada file backup</div>';
+    return;
+  }
+
+  el.innerHTML = items.map(g => `
+    <div class="conn-item ${selectedConnId===g.id?'active':''}" onclick="pilihConnFB('${esc(g.id)}')">
+      <span class="icon">🗄️</span>
+      <div class="info">
+        <div class="name">${esc(g.name)}</div>
+      </div>
+      <span class="count">${g.count}</span>
+    </div>`).join('');
+}
+
+function pilihConnFB(connId) {
+  selectedConnId = connId;
+  renderFBConnList();
+  renderFBFiles(connId);
+}
+
+function renderFBFiles(connId) {
+  const el = document.getElementById('fbFileList');
+  const title = document.getElementById('fbTitle');
+  const files = allBackupFiles.filter(b => (b.conn_id || '_unknown') === connId);
+  const connName = files.length ? files[0].conn_name : 'Backup';
+
+  title.textContent = connName + ' — ' + files.length + ' file';
+
+  if (!files.length) {
+    el.innerHTML = '<div class="empty-split">Tidak ada file backup untuk koneksi ini</div>';
+    return;
+  }
+
+  el.innerHTML = files.map(b => `
+    <div class="file-item">
+      <span class="file-icon">📦</span>
+      <div class="file-info">
+        <div class="file-name">${esc(b.file)}</div>
+        <div class="file-meta">
+          <span>${ukuran(b.size)}</span>
+          <span>${esc(waktu(b.mtime))}</span>
+          <span>${esc(b.dest_name)}</span>
+        </div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="bukaRestoreConfirm('${esc(b.path)}','${esc(b.file)}','${esc(String(b.size))}','${esc(connId)}')">⟲ Restore</button>
+    </div>`).join('');
+}
+
+// ================= RESTORE KONFIRMASI =================
+let rcData = {};
+
+function bukaRestoreConfirm(path, file, size, connId) {
+  rcData = { path, connId };
+
+  document.getElementById('rcFile').textContent = file;
+  document.getElementById('rcSize').textContent = ukuran(parseInt(size, 10) || 0);
+
+  // Isi dropdown koneksi
+  const sel = document.getElementById('rcConn');
+  sel.innerHTML = koneksiCache.map(c =>
+    `<option value="${c.id}" ${c.id===connId?'selected':''}>${esc(c.name)} (${esc(c.host)}:${esc(c.port)})</option>`
+  ).join('');
+
+  // Reset typing input
+  const ti = document.getElementById('rcType');
+  ti.value = '';
+  ti.className = 'typing-input';
+  document.getElementById('btnRcExec').disabled = true;
+  modalMsg('msgRestoreConfirm', '');
+
+  document.getElementById('ovRestoreConfirm').classList.add('show');
+
+  // Listen for typing
+  ti.oninput = function() {
+    const match = ti.value.trim().toUpperCase() === 'RESTORE';
+    document.getElementById('btnRcExec').disabled = !match;
+    ti.className = match ? 'typing-input' : (ti.value ? 'typing-input error' : 'typing-input');
+  };
+}
+
+async function eksekusiRestore() {
+  const connId = document.getElementById('rcConn').value;
+  const file = rcData.path;
+  const connNama = (koneksiCache.find(c=>c.id===connId)||{}).name || '';
+  const fileNama = document.getElementById('rcFile').textContent;
+
+  // Konfirmasi ke-2
+  if (!confirm(`ANDA YAKIN ingin restore?\n\nFile    : ${fileNama}\nTujuan  : ${connNama}\n\nData LAMA di server tujuan akan DIHAPUS dan diganti data dari backup.\nTindakan ini TIDAK BISA dibatalkan!`)) return;
+
+  tutup('ovRestoreConfirm');
+  toast('Restore berjalan…', 'info');
+
+  const j = await api('/api/restore', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ connection_id: connId, path: file })
+  });
+
+  if (j.success) toast('Restore berhasil', 'ok');
+  else toast('Restore gagal: ' + (j.message||''), 'err');
+}
+
+// ================= RESTORE =================
+let backupFiles = [];
+async function muatRestore() {
+  await muatKoneksi();
+  const rc = document.getElementById('rConn');
+  rc.innerHTML = koneksiCache.map(c => `<option value="${c.id}">${esc(c.name)} (${esc(c.host)}:${esc(c.port)})</option>`).join('')
+    || '<option value="">(belum ada koneksi)</option>';
+  const j = await api('/api/backups');
+  backupFiles = j.data || [];
+  const rf = document.getElementById('rFile');
+  if (!backupFiles.length) { rf.innerHTML = '<option value="">(belum ada file backup)</option>'; return; }
+  rf.innerHTML = backupFiles.map(b =>
+    `<option value="${esc(b.path)}">${esc(b.file)} — ${ukuran(b.size)} — ${esc(b.dest_name)} — ${esc(waktu(b.mtime))}</option>`).join('');
+}
+async function jalankanRestore() {
+  const path = document.getElementById('rFile').value;
+  const connId = document.getElementById('rConn').value;
+  if (!path) { toast('Pilih file backup dulu','err'); return; }
+  if (!connId) { toast('Pilih koneksi tujuan dulu','err'); return; }
+  const connNama = (koneksiCache.find(c=>c.id===connId)||{}).name || '';
+  const fileNama = (backupFiles.find(b=>b.path===path)||{}).file || path;
+  if (!confirm(`RESTORE akan MENIMPA data di:\n\n  Koneksi : ${connNama}\n  Dari    : ${fileNama}\n\nTindakan ini tidak bisa dibatalkan. Lanjutkan?`)) return;
+  const btn = document.getElementById('btnRestore');
+  btn.disabled = true; btn.textContent = 'Restore berjalan…';
+  const j = await api('/api/restore', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({connection_id:connId, path})});
+  btn.disabled = false; btn.textContent = '⟲ Jalankan Restore';
+  if (j.success) toast('Restore berhasil','ok');
+  else toast('Restore gagal: ' + (j.message||''), 'err');
+}
+
+// ---- util ----
+function statusBadge(s) {
+  if (s==='success') return '<span class="badge b-success">sukses</span>';
+  if (s==='failed') return '<span class="badge b-failed">gagal</span>';
+  if (s==='running') return '<span class="badge b-running">berjalan</span>';
+  return '<span class="badge b-off">'+esc(s||'-')+'</span>';
+}
+function waktu(iso) {
+  if (!iso || iso.startsWith('0001')) return '-';
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2,'0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function ukuran(n) {
+  if (n < 1024) return n+' B';
+  const u = ['KB','MB','GB','TB']; let i=-1;
+  do { n/=1024; i++; } while (n>=1024 && i<u.length-1);
+  return n.toFixed(1)+' '+u[i];
+}
+
+// init
+muatKoneksi();
+muatDestinasi();
+muatJadwal();
+</script>
+</body>
+</html>

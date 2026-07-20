@@ -1,0 +1,9 @@
+db-backup-scheduler
+db-backup-scheduler.exe
+dist/
+.git/
+.gitattributes
+*.md
+.env
+data/
+data.json

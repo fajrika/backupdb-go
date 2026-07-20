@@ -1,0 +1,21 @@
+# Binary
+db-backup-scheduler
+db-backup-scheduler.exe
+dist/
+
+# Data (berisi password koneksi DB dalam plaintext)
+data/
+data.json
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
