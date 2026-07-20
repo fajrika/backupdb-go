@@ -219,7 +219,7 @@ func dumpData(db *sql.DB, dbName, tblName string, w io.Writer) error {
 			return err
 		}
 
-		if rowCount > 0 {
+		if batchCount > 0 {
 			values.WriteString(",\n")
 		}
 		values.WriteString("(")
